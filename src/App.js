@@ -530,7 +530,7 @@ const FIELDS = [
 function ProductsView({ products, setProducts, stock, setStock }) {
   const { T } = useTheme(); const toast = useToast();
   const [mode, setMode] = useState(null), [editTarget, setEditTarget] = useState(null), [form, setForm] = useState(EMPTY_FORM);
-  const [errors, setErrors] = useState({}), [saving, setSaving] = useState(false), [confirmDelete, setConfirmDelete] = useState(null), [deleting, setDeleting] = useState(false), [filter, setFilter] = useState("");
+  const [errors, setErrors] = useState({}), [saving, setSaving] = useState(false), [confirmDelete, setConfirmDelete] = useState(null), [deleting, setDeleting] = useState(false), [deleteConfirmText, setDeleteConfirmText] = useState(""), [filter, setFilter] = useState("");
   const update = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const filtered = useMemo(() => { const q = filter.trim().toLowerCase(); if (!q) return products; return products.filter(p => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) || (p.barcode && p.barcode.includes(q))); }, [products, filter]);
@@ -566,7 +566,7 @@ function ProductsView({ products, setProducts, stock, setStock }) {
     const { error } = await supabase.from("products").delete().eq("id", confirmDelete.id);
     if (error) toast(`Delete failed: ${error.message}`, "error");
     else { setProducts(prev => prev.filter(p => p.id !== confirmDelete.id)); setStock(prev => prev.filter(s => s.productId !== confirmDelete.id)); toast(`${confirmDelete.name} deleted`, "info"); }
-    setDeleting(false); setConfirmDelete(null);
+    setDeleting(false); setConfirmDelete(null); setDeleteConfirmText("");
   };
 
   const marginPreview = form.costPrice && form.sellingPrice && !isNaN(form.costPrice) && !isNaN(form.sellingPrice) && Number(form.sellingPrice) > 0;
@@ -594,7 +594,7 @@ function ProductsView({ products, setProducts, stock, setStock }) {
                     <HoverRow key={p.id}>
                       <Td color={T.amber} style={{ fontSize: 11 }}>{p.sku}</Td><Td color={T.subtle} style={{ fontSize: 11 }}>{p.barcode || "—"}</Td><Td style={{ fontSize: 13 }}>{p.name}</Td>
                       <Td color={T.muted}>{fmt(p.costPrice)}</Td><Td>{fmt(p.sellingPrice)}</Td><Td color={Number(margin) > 40 ? T.green : T.amber}>{margin}%</Td><Td color={T.muted}>{p.reorderLevel}</Td>
-                      <Td><div style={{ display: "flex", gap: 6 }}><Btn small variant="ghost" onClick={() => openEdit(p)}>Edit</Btn><Btn small variant="danger" onClick={() => setConfirmDelete(p)}>Delete</Btn></div></Td>
+                      <Td><div style={{ display: "flex", gap: 6 }}><Btn small variant="ghost" onClick={() => openEdit(p)}>Edit</Btn><Btn small variant="danger" onClick={() => { setConfirmDelete(p); setDeleteConfirmText(""); }}>Delete</Btn></div></Td>
                     </HoverRow>
                   );
                 })}
@@ -630,17 +630,41 @@ function ProductsView({ products, setProducts, stock, setStock }) {
         </Modal>
       )}
       {confirmDelete && (
-        <Modal title="Delete Product?" onClose={() => setConfirmDelete(null)}>
+        <Modal title="Delete Product?" onClose={() => { setConfirmDelete(null); setDeleteConfirmText(""); }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
             <div style={{ background: T.redDim, border: `1px solid ${T.red}55`, padding: "14px 16px" }}>
-              <div style={{ fontFamily: T.fontMono, fontSize: 13, color: T.text, marginBottom: 6 }}>You are about to delete:</div>
+              <div style={{ fontFamily: T.fontMono, fontSize: 13, color: T.text, marginBottom: 6 }}>You are about to permanently delete:</div>
               <div style={{ fontFamily: T.fontDisplay, fontSize: 20, fontWeight: 700, color: T.red }}>{confirmDelete.name}</div>
               <div style={{ fontFamily: T.fontMono, fontSize: 11, color: T.muted, marginTop: 4 }}>SKU: {confirmDelete.sku}</div>
             </div>
-            <div style={{ fontFamily: T.fontMono, fontSize: 13, color: T.muted }}>This permanently removes the product and its stock entry. Sales history is kept. This cannot be undone.</div>
+            <div style={{ fontFamily: T.fontMono, fontSize: 13, color: T.muted }}>This removes the product and its stock entry. Sales history is kept. This cannot be undone.</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ fontFamily: T.fontMono, fontSize: 12, color: T.text }}>
+                To confirm, type <span style={{ fontFamily: T.fontMono, fontWeight: 600, color: T.red, background: T.redDim, padding: "2px 6px" }}>{confirmDelete.name}</span> below:
+              </div>
+              <input
+                autoFocus
+                value={deleteConfirmText}
+                onChange={e => setDeleteConfirmText(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter" && deleteConfirmText === confirmDelete.name) handleDelete(); }}
+                placeholder={confirmDelete.name}
+                style={{
+                  background: T.inputBg, border: `1px solid ${deleteConfirmText === confirmDelete.name ? T.red : T.border}`,
+                  color: T.text, fontFamily: T.fontMono, fontSize: 13, padding: "9px 12px", outline: "none",
+                  transition: "border-color 0.15s", width: "100%",
+                }}
+              />
+              {deleteConfirmText.length > 0 && deleteConfirmText !== confirmDelete.name && (
+                <div style={{ fontFamily: T.fontMono, fontSize: 11, color: T.muted }}>
+                  {confirmDelete.name.toLowerCase().startsWith(deleteConfirmText.toLowerCase()) ? "Keep typing…" : "Doesn't match — check spelling and capitalisation"}
+                </div>
+              )}
+            </div>
             <div style={{ display: "flex", gap: 10 }}>
-              <Btn variant="danger" onClick={handleDelete} disabled={deleting} full>{deleting ? "Deleting…" : "Yes, Delete"}</Btn>
-              <Btn variant="ghost" onClick={() => setConfirmDelete(null)} style={{ flexShrink: 0 }}>Cancel</Btn>
+              <Btn variant="danger" onClick={() => { handleDelete(); setDeleteConfirmText(""); }} disabled={deleting || deleteConfirmText !== confirmDelete.name} full>
+                {deleting ? "Deleting…" : "Delete Permanently"}
+              </Btn>
+              <Btn variant="ghost" onClick={() => { setConfirmDelete(null); setDeleteConfirmText(""); }} style={{ flexShrink: 0 }}>Cancel</Btn>
             </div>
           </div>
         </Modal>
